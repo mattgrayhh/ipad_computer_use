@@ -10,7 +10,7 @@ test('MCP initialize and tools/list expose the iPad tools without auth', async t
   assert.deepEqual(initialized.result.capabilities, {tools: {listChanged: false}});
   await call({jsonrpc: '2.0', method: 'notifications/initialized'});
   const list = await call({jsonrpc: '2.0', id: 2, method: 'tools/list'});
-  assert.deepEqual(list.result.tools.map(tool => tool.name), ['status', 'get_screen', 'issue_actions']);
+  assert.deepEqual(list.result.tools.map(tool => tool.name), ['status', 'get_screen', 'jev_decide', 'issue_actions']);
   const issue = list.result.tools.find(tool => tool.name === 'issue_actions');
   assert.match(issue.description, /press\.keys must be an object/);
   const press = issue.inputSchema.properties.actions.items.oneOf.find(action => action.properties.type.const === 'press');
@@ -57,6 +57,31 @@ test('MCP execution errors are returned as tool errors', async t => {
   assert.equal(result.result.isError, true);
   assert.match(result.result.content[0].text, /Calibrate first/);
   assert.equal(result.result.structuredContent.status, 428);
+});
+
+test('jev_decide reads the screen and returns a proposal without issuing any input', async t => {
+  const seen = [];
+  const control = await fakeControl(t, async request => {
+    seen.push({url: request.url, method: request.method});
+    assert.equal(request.url, '/screen');
+    return {statusCode: 200, body: {width: 800, height: 600, frameID: 'jev-frame',
+      receivedAt: Date.now(), capturedAt: Date.now(), mimeType: 'image/jpeg', data: '/9j/2Q=='}};
+  });
+  const {call} = await setup(t, {controlBaseUrl: control.base, jevOptions: {
+    ocr: async () => ({width: 800, height: 600, items: [{text: 'Settings', bounds: {x: 40, y: 60, width: 100, height: 30}}]}),
+    evaluate: async () => ({answers: {
+      kind: {type: 'choice', choice: 'click_item', confidence: 0.95},
+      item: {type: 'choice', choice: '0', confidence: 0.95}
+    }})
+  }});
+  const result = await call({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {
+    name: 'jev_decide', arguments: {goal: 'Open Settings'}
+  }});
+  assert.equal(result.result.structuredContent.status, 'proposed');
+  assert.equal(result.result.structuredContent.executed, false);
+  assert.equal(result.result.content[1].type, 'image');
+  assert.equal(result.result.structuredContent.proposal.pointer, undefined);
+  assert.deepEqual(seen, [{url: '/screen', method: 'GET'}]);
 });
 
 test('MCP endpoint rejects browser origins', async t => {

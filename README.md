@@ -7,6 +7,16 @@ plays them back as real USB HID input.
 USB-C iPhones are also supported; see [iPhone setup](#iphone-setup) for the
 additional AssistiveTouch configuration.
 
+## Jev fast decisions (this fork)
+
+This fork adds `jev_decide` to the existing Codex/MCP tools. It reads iPad screen
+text locally with Apple Vision, asks TypeSafe Jev for a next-action choice, and
+returns a proposal with confidence and timing data. Codex verifies and executes
+through the existing `issue_actions` tool, with visual reasoning as the fallback.
+See [Jev setup and usage](control_server/jev/README.md). Existing first-time pointer
+calibration is still required; the saved calibration maps motion, while the
+current pointer position comes from the screenshot.
+
 ![iPad Computer Use demo](docs/demo.gif)
 
 ## Three components

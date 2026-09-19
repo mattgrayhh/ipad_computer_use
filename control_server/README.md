@@ -1,6 +1,11 @@
 # Control server
 
 Routes ordered actions and screenshot requests to one permitted iPad session.
+
+This fork also provides the optional [`jev_decide` MCP tool](jev/README.md) for
+local OCR and TypeSafe Jev action proposals. It uses the existing calibration and
+input pipeline and returns control to the calling agent for execution or visual
+reasoning.
 The iPad maintains an outbound WebSocket; requests complete only after its reply.
 The server requires no USB access or Apple SDK. Node.js 20+ is required.
 

@@ -1,5 +1,6 @@
 'use strict';
 const http = require('node:http');
+const {createJevAdvisor} = require('./jev/advisor');
 
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const DEFAULT_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
@@ -248,6 +249,22 @@ const tools = [
     annotations: {readOnlyHint: true}
   },
   {
+    name: 'jev_decide',
+    title: 'Jev Fast iPad Decision',
+    description: 'Read a fresh iPad screenshot with local OCR and ask TypeSafe Jev for one next action. Returns the screenshot, confidence, timings, and a proposal; NEVER executes input. Prefer for text-labelled screens. For a proposed click, inspect the returned screenshot, add the observed current pointer to proposal, then call issue_actions. For needs_reasoning, use normal visual reasoning on the returned screenshot. Requires macOS OCR setup and TYPESAFE_API_KEY on the MCP server. Sends screen text, goal, history and text candidates to TypeSafe; screenshots stay local to this server and the calling agent.',
+    inputSchema: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        goal: {type: 'string', minLength: 1, maxLength: 4000},
+        history: {type: 'array', maxItems: 8, items: {type: 'string', maxLength: 1000}, description: 'Recent actions and observed results. Jev keeps no conversation history.'},
+        textCandidates: {type: 'array', maxItems: 16, items: {type: 'string', minLength: 1, maxLength: 512}, description: 'Optional caller-supplied literal ASCII text choices. Jev selects text; it does not generate it. Returned text escapes braces for the HID codec.'},
+        minConfidence: {type: 'number', minimum: 0, maximum: 1, default: 0.7, description: 'Below this threshold, return needs_reasoning without a proposal. Tune on your tasks; confidence is not a guarantee.'}
+      },
+      required: ['goal']
+    },
+    annotations: {readOnlyHint: true, openWorldHint: true}
+  },
+  {
     name: 'issue_actions',
     title: 'Issue iPad Input Actions',
     description: 'Send ordered keyboard and pointer actions to the iPad. IMPORTANT: press.keys must be an object, for example {"key":"space","modifiers":["cmd"]}; never an array. Coordinates are in the latest screenshot coordinate space; absolute pointer actions require top-level pointer, for example {"coordinateSpace":{"width":1280,"height":960},"pointer":{"x":640,"y":480},"actions":[{"type":"click","x":500,"y":300}]}',
@@ -264,6 +281,7 @@ function initializeResult(requestedVersion) {
     serverInfo: {name: 'ipad-control-server', title: 'iPad Computer Use', version: '0.1.0'},
     instructions: [
       'Use get_screen to inspect the current iPad screen.',
+      'For text-labelled screens, prefer jev_decide with the current goal and recent action history. It returns a fresh screenshot and a proposed action, never executes input. Verify the proposal against that screenshot, then use issue_actions. On needs_reasoning, continue with visual reasoning. Never treat model confidence as permission or proof of completion.',
       'Use issue_actions to send short, ordered keyboard and pointer actions.',
       'For key chords, press.keys is an object: {"key":"space","modifiers":["cmd"]} sends Command-Space. Do not use arrays for press.keys.',
       'Pointer actions use screenshot coordinates and require calibration in the iPad app.',
@@ -273,8 +291,10 @@ function initializeResult(requestedVersion) {
   };
 }
 
-function createMcpServer({controlBaseUrl = `http://127.0.0.1:${process.env.PORT || 8765}/`} = {}) {
+function createMcpServer({controlBaseUrl = `http://127.0.0.1:${process.env.PORT || 8765}/`, jevOptions = {}} = {}) {
+  const advise = createJevAdvisor({...jevOptions, readScreen: () => controlFetch(controlBaseUrl, '/screen')});
   async function callTool(name, args = {}) {
+    if (name === 'jev_decide') return advise(args);
     if (name === 'status') {
       const result = await controlFetch(controlBaseUrl, '/status');
       return {content: [{type: 'text', text: toolResultText(result)}], structuredContent: result};

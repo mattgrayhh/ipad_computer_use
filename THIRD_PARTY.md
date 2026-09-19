@@ -16,6 +16,12 @@ under that license. Third-party code retains its own licenses and notices.
 
 ## Installed dependencies
 
+The Jev integration was informed by the OCR and batched-decision architecture in
+[awlevin/typesafe-computer-use](https://github.com/awlevin/typesafe-computer-use)
+(MIT). Its Python implementation is not vendored. This fork implements the iPad
+MCP adaptation in JavaScript and Swift using Apple's Vision framework and the
+TypeSafe HTTP API.
+
 - `ws` 8.21.3: MIT license, installed by npm from the lockfile; its LICENSE is
   included by the upstream package.
 - Arduino-Pico 6.1.0: installed by the firmware setup script. Its core LICENSE
