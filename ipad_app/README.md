@@ -68,6 +68,11 @@ with their existing server address prefilled.
 4. Complete pointer calibration if needed. Use any iPad app during the session.
 5. End Session to revoke new commands and request key/button release.
 
+Screen locking stops the broadcast. For unattended sessions across apps, set
+Settings → Display & Brightness → Auto-Lock to Never, then restore your preferred
+timeout when finished. A disconnected session does not delete the saved pointer
+calibration; restart screen sharing after unlocking.
+
 Recalibrate Pointer is also on the main page. Without an active session, it opens
 screen-sharing confirmation first. Saving a different server during a session
 requires ending that session through the explicit End Session and Save button.

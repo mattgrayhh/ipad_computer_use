@@ -115,7 +115,13 @@ On a connected iPad Air M3, native calibration hit all six verification targets
 with a maximum error of 1.21 UIKit points. A live `jev_decide` call selected
 "Edit Control Server" with confidence 0.97: capture 91 ms, OCR 172 ms, Jev
 409 ms, total 672 ms. This verifies the physical screen-to-decision path;
-agent review and input execution are additional steps.
+agent review and input execution are additional steps. A physical Settings task
+also reached Display & Brightness → Auto-Lock → Never and verified the selected
+checkmark. Jev decisions for those rows took 751–847 ms including capture and OCR.
+Long pointer moves required screenshot feedback and correction before clicking;
+the saved calibration does not guarantee exact open-loop positioning. OCR labels
+can also be noninteractive (for example, a disclosure label whose arrow is the
+click target), so visual verification and fallback remain necessary.
 
 - One request batches independent action, target and optional text questions.
   Only answers used by the selected action affect its confidence gate.
