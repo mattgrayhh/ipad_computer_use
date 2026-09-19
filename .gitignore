@@ -2,6 +2,7 @@
 **/.tools/
 **/.state/
 **/build/
+**/build_iphone/
 **/node_modules/
 exports/
 **/__pycache__/
