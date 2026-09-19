@@ -1,6 +1,9 @@
 'use strict';
 const http = require('node:http');
 const {createJevAdvisor} = require('./jev/advisor');
+const {createJevRunner} = require('./jev/runner');
+const {closeOCR} = require('./jev/ocr');
+const {createWDA} = require('./jev/wda');
 
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const DEFAULT_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
@@ -235,6 +238,46 @@ const actionSchema = {
 
 const tools = [
   {
+    name: 'get_ui', title: 'Read iPad Native Controls',
+    description: 'Read a compact native accessibility tree through optional WebDriverAgent (WDA_URL). Returns real control roles, labels, identifiers and UIKit point bounds; no OCR or pointer calibration. Requires a signed running WebDriverAgent on the iPad.',
+    inputSchema: {type: 'object', additionalProperties: false}, annotations: {readOnlyHint: true}
+  },
+  {
+    name: 'ui_action', title: 'Use iPad Native Control',
+    description: 'Activate an iPad app by bundle ID, or click/type into exactly one visible native control observed in get_ui. Exact identifier or label required; ambiguous selectors stop. Uses WebDriverAgent and bypasses the relative mouse. Typing appends literal Unicode text. Requires WDA_URL.',
+    inputSchema: {type: 'object', additionalProperties: false, properties: {
+      action: {type: 'string', enum: ['activate', 'click', 'type']}, bundleId: {type: 'string'}, text: {type: 'string', maxLength: 2000},
+      selector: {type: 'object', additionalProperties: false, properties: {
+        identifier: {type: 'string'}, label: {type: 'string'}, type: {type: 'string'}
+      }}
+    }, required: ['action']}, annotations: {readOnlyHint: false, destructiveHint: true}
+  },
+  {
+    name: 'jev_run', title: 'Run Fast iPad Workflow',
+    description: 'Execute a bounded workflow locally using fresh native evidence and focused Jev judgments, with completion verification. Use slack_open_conversation with the exact conversation name for fast Slack navigation. Use plan for caller-authorized keyboard sequences with explicit screen preconditions. No per-step Codex round trips. Stops on uncertainty, timeout, cancellation or disconnect. Never use a plan to send messages or perform consequential actions without user authorization. Returns a final screenshot and per-stage timings. Text is literal (braces are escaped automatically).',
+    inputSchema: {type: 'object', additionalProperties: false, properties: {
+      workflow: {type: 'string', enum: ['slack_open_conversation', 'plan']},
+      query: {type: 'string', maxLength: 100, description: 'Exact ASCII name of a person for a one-to-one Slack conversation.'},
+      goal: {type: 'string', maxLength: 2000},
+      completion: {type: 'string', maxLength: 2000, description: 'Visible evidence required for plan success.'},
+      steps: {type: 'array', minItems: 1, maxItems: 12, items: {type: 'object', additionalProperties: false,
+        properties: {label: {type: 'string', maxLength: 100}, when: {type: 'string', maxLength: 2000},
+          actions: {type: 'array', minItems: 1, maxItems: 20, items: {oneOf: actionVariants.slice(0, 3).map(variant => {
+            if (variant.properties.type.const === 'wait') return {...variant, properties: {...variant.properties, ms: {type: 'integer', minimum: 0, maximum: 1000}}};
+            if (variant.properties.type.const === 'type_text') return {...variant, properties: {...variant.properties, text: {type: 'string', maxLength: 512, description: 'Literal ASCII text.'}}};
+            return variant;
+          })}}},
+        required: ['label', 'when', 'actions']}},
+      maxMs: {type: 'integer', minimum: 1000, maximum: 60000, default: 30000},
+      minProbability: {type: 'number', minimum: 0.7, maximum: 1, default: 0.85, description: 'Required Noul probability for model-verified checkpoints. Native facts are verified in code.'}
+    }, required: ['workflow']}, annotations: {readOnlyHint: false, destructiveHint: true}
+  },
+  {
+    name: 'jev_cancel', title: 'Stop Jev Workflow',
+    description: 'Stop an active local workflow before its next action. An already dispatched input batch finishes; no input is replayed.',
+    inputSchema: {type: 'object', additionalProperties: false}, annotations: {readOnlyHint: false}
+  },
+  {
     name: 'status',
     title: 'iPad Control Status',
     description: 'Return connection, session, calibration, and pending-command status for the iPad control server.',
@@ -281,6 +324,8 @@ function initializeResult(requestedVersion) {
     serverInfo: {name: 'ipad-control-server', title: 'iPad Computer Use', version: '0.1.0'},
     instructions: [
       'Use get_screen to inspect the current iPad screen.',
+      'When WebDriverAgent is configured, use get_ui and ui_action for native controls and direct app activation; no pointer observation or calibration is needed. Bounds from get_ui are UIKit points, not screenshot pixels.',
+      'Prefer jev_run for supported navigation workflows or a known keyboard plan. It checks preconditions and completion locally and returns the final screenshot. Use jev_cancel to stop it. Use jev_decide for individual actions that need your visual judgment.',
       'For text-labelled screens, prefer jev_decide with the current goal and recent action history. It returns a fresh screenshot and a proposed action, never executes input. Verify the proposal against that screenshot, then use issue_actions. On needs_reasoning, continue with visual reasoning. Never treat model confidence as permission or proof of completion.',
       'Use issue_actions to send short, ordered keyboard and pointer actions.',
       'For key chords, press.keys is an object: {"key":"space","modifiers":["cmd"]} sends Command-Space. Do not use arrays for press.keys.',
@@ -291,9 +336,27 @@ function initializeResult(requestedVersion) {
   };
 }
 
-function createMcpServer({controlBaseUrl = `http://127.0.0.1:${process.env.PORT || 8765}/`, jevOptions = {}} = {}) {
+function createMcpServer({controlBaseUrl = `http://127.0.0.1:${process.env.PORT || 8765}/`, jevOptions = {}, runnerOptions = {}, wda = createWDA()} = {}) {
   const advise = createJevAdvisor({...jevOptions, readScreen: () => controlFetch(controlBaseUrl, '/screen')});
+  const runner = createJevRunner({...jevOptions,
+    ...(wda ? {activateApp: wda.activateApp, readNativeUI: wda.readUI, uiAction: wda.action, selectSlackConversation: wda.selectSlackConversation,
+      ...(process.env.JEV_OBSERVATION === 'accessibility' ? {readUI: wda.readUI} : {})} : {}),
+    ...runnerOptions,
+    readScreen: () => controlFetch(controlBaseUrl, '/screen'),
+    readStatus: () => controlFetch(controlBaseUrl, '/status'),
+    execute: args => controlFetch(controlBaseUrl, '/computer-use/actions', {method: 'POST', body: args})});
+  let busy = false;
   async function callTool(name, args = {}) {
+    if (name === 'get_ui' || name === 'ui_action') {
+      if (!wda) throw Error('Set WDA_URL to a running, trusted WebDriverAgent endpoint');
+      const result = name === 'get_ui' ? await wda.readUI() : await wda.action(args);
+      return {structuredContent: result, content: [{type: 'text', text: toolResultText(result)}]};
+    }
+    if (name === 'jev_cancel') {
+      const result = runner.cancel();
+      return {structuredContent: result, content: [{type: 'text', text: toolResultText(result)}]};
+    }
+    if (name === 'jev_run') return runner.run(args);
     if (name === 'jev_decide') return advise(args);
     if (name === 'status') {
       const result = await controlFetch(controlBaseUrl, '/status');
@@ -335,7 +398,11 @@ function createMcpServer({controlBaseUrl = `http://127.0.0.1:${process.env.PORT 
         return rpcError(id, -32602, 'Invalid tool call parameters');
       }
       try {
-        return rpcResult(id, await callTool(name, args));
+        if (name === 'status' || name === 'jev_cancel') return rpcResult(id, await callTool(name, args));
+        if (busy) throw Error('iPad MCP is busy; wait for the current operation or use jev_cancel');
+        busy = true;
+        try {return rpcResult(id, await callTool(name, args));}
+        finally {busy = false;}
       } catch (error) {
         if (error.code) return rpcError(id, error.code, error.message);
         return rpcResult(id, {
@@ -389,6 +456,8 @@ function createMcpServer({controlBaseUrl = `http://127.0.0.1:${process.env.PORT 
     }
   });
   return {server, close: async () => {
+    runner.cancel();
+    closeOCR();
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
   }};

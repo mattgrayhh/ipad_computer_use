@@ -10,7 +10,7 @@ test('MCP initialize and tools/list expose the iPad tools without auth', async t
   assert.deepEqual(initialized.result.capabilities, {tools: {listChanged: false}});
   await call({jsonrpc: '2.0', method: 'notifications/initialized'});
   const list = await call({jsonrpc: '2.0', id: 2, method: 'tools/list'});
-  assert.deepEqual(list.result.tools.map(tool => tool.name), ['status', 'get_screen', 'jev_decide', 'issue_actions']);
+  assert.deepEqual(list.result.tools.map(tool => tool.name), ['get_ui', 'ui_action', 'jev_run', 'jev_cancel', 'status', 'get_screen', 'jev_decide', 'issue_actions']);
   const issue = list.result.tools.find(tool => tool.name === 'issue_actions');
   assert.match(issue.description, /press\.keys must be an object/);
   const press = issue.inputSchema.properties.actions.items.oneOf.find(action => action.properties.type.const === 'press');
@@ -129,3 +129,30 @@ async function fakeControl(t, handler) {
   t.after(() => new Promise(resolve => server.close(resolve)));
   return {base: `http://127.0.0.1:${server.address().port}`};
 }
+
+test('local workflow excludes competing input while status and cancellation remain available', async t => {
+  let entered, release, inputs = 0;
+  const reached = new Promise(resolve => {entered = resolve;});
+  const blocked = new Promise(resolve => {release = resolve;});
+  const control = await fakeControl(t, async request => {
+    if (request.url === '/status') return {statusCode: 200, body: {connected: true, deviceID: 'test-ipad'}};
+    if (request.url === '/screen') return {statusCode: 200, body: {width: 100, height: 100, frameID: 'f',
+      receivedAt: Date.now(), mimeType: 'image/jpeg', data: 'AA=='}};
+    inputs++; return {statusCode: 200, body: {status: 'completed'}};
+  });
+  const {call} = await setup(t, {controlBaseUrl: control.base, wda: null, jevOptions: {
+    ocr: async () => ({width: 100, height: 100, items: []}),
+    evaluate: async () => {entered(); await blocked; return {answers: {gate: {type: 'noul', noul: .99}}};}
+  }});
+  const tool = (name, args = {}) => call({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name, arguments: args}});
+  const running = tool('jev_run', {workflow: 'plan', goal: 'Search', completion: 'Done', steps: [
+    {label: 'Type', when: 'Search focused', actions: [{type: 'type_text', text: 'example'}]}
+  ]});
+  await reached;
+  assert.equal((await tool('issue_actions', {actions: [{type: 'press', keys: {key: 'enter'}}]})).result.isError, true);
+  assert.equal((await tool('status')).result.structuredContent.connected, true);
+  assert.equal((await tool('jev_cancel')).result.structuredContent.cancellationRequested, true);
+  release();
+  assert.equal((await running).result.structuredContent.reason, 'cancelled');
+  assert.equal(inputs, 0);
+});

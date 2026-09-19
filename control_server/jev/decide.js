@@ -31,7 +31,8 @@ function normalizeItems(ocr, screen) {
   return {
     truncated: items.length > MAX_ITEMS,
     items: items.slice(0, MAX_ITEMS).map((item, index) => ({
-      id: String(index), text: item.text.trim().slice(0, 400), bounds: item.bounds
+      id: String(index), text: item.text.trim().slice(0, 400),
+      bounds: Object.fromEntries(Object.entries(item.bounds).map(([key, value]) => [key, Math.round(value * 10) / 10]))
     }))
   };
 }
@@ -59,7 +60,7 @@ function buildRequest(options, screen, observation, model = 'jev-latest') {
   if (observation.items.length) questions.item = {
     type: 'choice', instructions: 'Assuming this step should click visible text, which item advances `goal`? Choose none if no item is an appropriate target.',
     criteria: Object.fromEntries([
-      ...observation.items.map(item => [item.id, JSON.stringify({text: item.text, bounds: item.bounds})]),
+      ...observation.items.map(item => [item.id, item.text]),
       ['none', 'No visible text item is a suitable click target.']
     ])
   };

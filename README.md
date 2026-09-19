@@ -9,13 +9,17 @@ additional AssistiveTouch configuration.
 
 ## Jev fast decisions (this fork)
 
-This fork adds `jev_decide` to the existing Codex/MCP tools. It reads iPad screen
-text locally with Apple Vision, asks TypeSafe Jev for a next-action choice, and
-returns a proposal with confidence and timing data. Codex verifies and executes
-through the existing `issue_actions` tool, with visual reasoning as the fallback.
-See [Jev setup and usage](control_server/jev/README.md). Existing first-time pointer
-calibration is still required; the saved calibration maps motion, while the
-current pointer position comes from the screenshot.
+This fork adds a local `jev_run` workflow loop to the existing Codex/MCP tools.
+It can open a Slack conversation in one tool call, using native iPad control
+identifiers through optional WebDriverAgent and small TypeSafe Jev judgments.
+`get_ui` and `ui_action` expose native controls for other apps; `jev_decide` retains
+the screenshot/OCR adviser with visual reasoning as a fallback.
+
+Three physical iPad trials from Settings to a visible Slack DM completed in
+3.60–3.65 seconds including final screenshot capture. This is a measured workflow,
+not a claim about arbitrary app tasks. See [setup, tools, and measurements](control_server/jev/README.md).
+USB mouse actions still need calibration and an observed pointer; native UI actions
+bypass the relative mouse entirely.
 
 ![iPad Computer Use demo](docs/demo.gif)
 

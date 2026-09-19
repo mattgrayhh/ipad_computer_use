@@ -8,7 +8,52 @@ struct Bounds: Encodable { let x: Double; let y: Double; let width: Double; let 
 struct Item: Encodable { let text: String; let bounds: Bounds }
 struct Observation: Encodable { let width: Int; let height: Int; let items: [Item] }
 
+func recognize(_ data: Data) throws -> Data {
+    guard data.count <= 2 * 1024 * 1024,
+          let source = CGImageSourceCreateWithData(data as CFData, nil),
+          let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+        throw NSError(domain: "JevOCR", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid screenshot"])
+    }
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.usesLanguageCorrection = false
+    try VNImageRequestHandler(cgImage: image, orientation: .up).perform([request])
+    let w = Double(image.width), h = Double(image.height)
+    let items = (request.results ?? []).compactMap { observation -> Item? in
+        guard let candidate = observation.topCandidates(1).first else { return nil }
+        let b = observation.boundingBox
+        let x = max(0, b.minX * w), y = max(0, (1 - b.maxY) * h)
+        return Item(text: candidate.string, bounds: Bounds(x: x, y: y,
+            width: min(w - x, b.width * w), height: min(h - y, b.height * h)))
+    }
+    return try JSONEncoder().encode(Observation(width: image.width, height: image.height, items: items))
+}
+
+func readExactly(_ count: Int) -> Data? {
+    var data = Data()
+    while data.count < count {
+        let part = FileHandle.standardInput.readData(ofLength: count - data.count)
+        if part.isEmpty { return nil }
+        data.append(part)
+    }
+    return data
+}
+
 do {
+    if CommandLine.arguments.contains("--serve") {
+        // Length-prefixed JPEG input and one JSON line per response. Keep Vision warm.
+        while let header = readExactly(4) {
+            let length = header.reduce(0) { ($0 << 8) | Int($1) }
+            guard length > 0, length <= 2 * 1024 * 1024, let data = readExactly(length) else {
+                throw NSError(domain: "JevOCR", code: 2)
+            }
+            try autoreleasepool {
+                FileHandle.standardOutput.write(try recognize(data))
+                FileHandle.standardOutput.write(Data([10]))
+            }
+        }
+        exit(0)
+    }
     let data: Data
     if CommandLine.arguments.contains("--warmup") {
         // Trigger Apple's one-time model initialization before a timed MCP request.
@@ -24,26 +69,7 @@ do {
     } else {
         data = FileHandle.standardInput.readDataToEndOfFile()
     }
-    guard data.count <= 2 * 1024 * 1024,
-          let source = CGImageSourceCreateWithData(data as CFData, nil),
-          let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-        throw NSError(domain: "JevOCR", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid screenshot"])
-    }
-    let request = VNRecognizeTextRequest()
-    request.recognitionLevel = .accurate
-    request.usesLanguageCorrection = false
-    try VNImageRequestHandler(cgImage: image, orientation: .up).perform([request])
-    let w = Double(image.width), h = Double(image.height)
-    let items = (request.results ?? []).compactMap { observation -> Item? in
-        guard let candidate = observation.topCandidates(1).first else { return nil }
-        let b = observation.boundingBox
-        // Vision is normalized bottom-left; control API uses screenshot pixels, top-left.
-        let x = max(0, b.minX * w), y = max(0, (1 - b.maxY) * h)
-        return Item(text: candidate.string, bounds: Bounds(x: x, y: y,
-            width: min(w - x, b.width * w), height: min(h - y, b.height * h)))
-    }
-    let output = try JSONEncoder().encode(Observation(width: image.width, height: image.height, items: items))
-    FileHandle.standardOutput.write(output)
+    FileHandle.standardOutput.write(try recognize(data))
 } catch {
     FileHandle.standardError.write(Data("OCR failed: \(error.localizedDescription)\n".utf8))
     exit(1)

@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const {execFile} = require('node:child_process');
+const {spawn} = require('node:child_process');
 const {stateDirectory} = require('../config');
 
 function binaryPath() {
@@ -10,18 +10,65 @@ function binaryPath() {
   return path.join(stateDirectory, 'jev', `vision-ocr-${hash}`);
 }
 
-function recognize(image) {
-  return new Promise((resolve, reject) => {
-    if (process.platform !== 'darwin') return reject(Error('Local Jev OCR requires macOS; use get_screen with the existing agent on other hosts'));
-    const binary = binaryPath();
-    if (!fs.existsSync(binary)) return reject(Error('Run npm run jev:setup --workspace control_server to build local OCR'));
-    const child = execFile(binary, [], {timeout: 10000, maxBuffer: 2 * 1024 * 1024}, (error, stdout) => {
-      if (error) return reject(Error('Local OCR failed or timed out; use the existing agent'));
-      try {resolve(JSON.parse(stdout));} catch {reject(Error('Local OCR returned invalid JSON'));}
+function createOCRWorker({timeoutMs = 10000, idleMs = 60000} = {}) {
+  let child, active, buffer = '', idleTimer, timer;
+  let tail = Promise.resolve();
+  let queued = 0;
+  function close() {
+    clearTimeout(timer);
+    clearTimeout(idleTimer);
+    const previous = child;
+    child = null;
+    buffer = '';
+    previous?.kill();
+    if (active) {active.reject(Error('Local OCR stopped or timed out')); active = null;}
+  }
+  function start() {
+    if (child) return;
+    if (process.platform !== 'darwin') throw Error('Local Jev OCR requires macOS');
+    if (!fs.existsSync(binaryPath())) throw Error('Run npm run jev:setup --workspace control_server to build local OCR');
+    const current = child = spawn(binaryPath(), ['--serve'], {stdio: ['pipe', 'pipe', 'ignore']});
+    current.on('error', () => {if (child === current) close();});
+    current.on('exit', () => {if (child === current) close();});
+    current.stdin.on('error', () => {if (child === current) close();});
+    current.stdout.setEncoding('utf8');
+    current.stdout.on('data', chunk => {
+      if (child !== current) return;
+      buffer += chunk;
+      if (buffer.length > 2 * 1024 * 1024) return close();
+      const end = buffer.indexOf('\n');
+      if (end < 0) return;
+      try {
+        if (!active || end !== buffer.length - 1) throw Error('Unexpected OCR response');
+        const result = JSON.parse(buffer.slice(0, end));
+        buffer = '';
+        clearTimeout(timer);
+        const pending = active;
+        active = null;
+        idleTimer = setTimeout(close, idleMs);
+        pending.resolve(result);
+      } catch {close();}
     });
-    child.stdin.on('error', () => {}); // execFile's callback reports an early child exit.
-    child.stdin.end(image);
-  });
+  }
+  function recognize(image) {
+    if (!Buffer.isBuffer(image) || !image.length || image.length > 2 * 1024 * 1024)
+      return Promise.reject(Error('Invalid OCR image'));
+    if (queued >= 16) return Promise.reject(Error('OCR worker is busy'));
+    queued++;
+    const result = tail.then(() => new Promise((resolve, reject) => {
+      try {start();} catch (error) {reject(error); return;}
+      clearTimeout(idleTimer);
+      active = {resolve, reject};
+      timer = setTimeout(close, timeoutMs);
+      const header = Buffer.alloc(4);
+      header.writeUInt32BE(image.length);
+      child.stdin.write(Buffer.concat([header, image]));
+    }));
+    tail = result.catch(() => {}).finally(() => {queued--;});
+    return result;
+  }
+  return {recognize, close};
 }
 
-module.exports = {recognize, binaryPath};
+const worker = createOCRWorker();
+module.exports = {recognize: worker.recognize, closeOCR: worker.close, createOCRWorker, binaryPath};

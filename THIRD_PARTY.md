@@ -30,6 +30,9 @@ TypeSafe HTTP API.
   distribution's notices and source/relinking requirements before publishing
   prebuilt firmware, not just this project's original-code license.
 - Apple SDKs/tooling are installed separately and not redistributed here.
+- Optional Appium WebDriverAgent 16.12.8: BSD-3-Clause, installed from the pinned
+  npm package by `control_server/jev/wda_setup.sh`. Its source, licenses and build
+  products remain in the excluded `.state/wda` directory; none are vendored here.
 
 This list describes the current source dependencies, not a completed audit of
 every library linked into a firmware binary.
