@@ -65,7 +65,16 @@ final class FrameCapture: @unchecked Sendable {
         let result: Result<ScreenShot, Error> = autoreleasepool {
             do {
                 guard let buffer = CMSampleBufferGetImageBuffer(sample) else { throw RelayError(message: "Missing video frame") }
-                var image = CIImage(cvPixelBuffer: buffer).oriented(orientation)
+                // ReplayKit reports the source buffer's rotation. Flatten it with
+                // the inverse rotation; applying landscape tags directly turns
+                // the screenshot upside down relative to UIKit input coordinates.
+                let correction: CGImagePropertyOrientation
+                switch orientation {
+                case .left: correction = .right
+                case .right: correction = .left
+                default: correction = orientation
+                }
+                var image = CIImage(cvPixelBuffer: buffer).oriented(correction)
                 let scale = min(1, 1280 / max(image.extent.width, image.extent.height))
                 image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
                 guard let cgImage = context.createCGImage(image, from: image.extent.integral,

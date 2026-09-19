@@ -175,11 +175,16 @@ function createRelay({inputDeviceSecret = readInputDeviceSecret(), commandTimeou
   });
   sockets.on('connection', ws => {
     device = ws;
+    const connectedAt = Date.now();
+    let disconnectCause = 'socket closed';
     ws.ready = false;
     ws.alive = true;
     const handshake = setTimeout(() => {if (!ws.ready) ws.terminate();}, 5000);
     ws.on('pong', () => {ws.alive = true;});
-    ws.on('error', () => ws.terminate());
+    ws.on('error', error => {
+      disconnectCause = `socket error: ${error.code || error.name}`;
+      ws.terminate();
+    });
     ws.on('message', data => {
       let message;
       try {message = JSON.parse(data.toString());} catch {ws.close(1008, 'Invalid JSON'); return;}
@@ -230,7 +235,10 @@ function createRelay({inputDeviceSecret = readInputDeviceSecret(), commandTimeou
         else if (message.type === 'failed') finish(502, {status: 'failed', error: String(message.error || 'iPad failed').slice(0, 500)});
       }
     });
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
+      console.log(JSON.stringify({event: 'device-disconnected', at: new Date().toISOString(),
+        code, reason: reason.toString().slice(0, 200), cause: ws.disconnectCause || disconnectCause,
+        connectedMs: Date.now() - connectedAt, pendingPhase: pending?.phase || null}));
       clearTimeout(handshake);
       clearTimeout(ws.endTimer);
       if (device === ws) {
@@ -243,7 +251,7 @@ function createRelay({inputDeviceSecret = readInputDeviceSecret(), commandTimeou
   });
   const heartbeat = setInterval(() => {
     if (!device) return;
-    if (!device.alive) {device.terminate(); return;}
+    if (!device.alive) {device.disconnectCause = 'heartbeat timeout'; device.terminate(); return;}
     device.alive = false;
     if (device.readyState === WebSocket.OPEN) device.ping();
   }, heartbeatMs);

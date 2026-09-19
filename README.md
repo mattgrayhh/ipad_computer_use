@@ -7,6 +7,20 @@ plays them back as real USB HID input.
 USB-C iPhones are also supported; see [iPhone setup](#iphone-setup) for the
 additional AssistiveTouch configuration.
 
+## Jev fast decisions (this fork)
+
+This fork adds a local `jev_run` workflow loop to the existing Codex/MCP tools.
+It can open a Slack conversation in one tool call, using native iPad control
+identifiers through optional WebDriverAgent and small TypeSafe Jev judgments.
+`get_ui` and `ui_action` expose native controls for other apps; `jev_decide` retains
+the screenshot/OCR adviser with visual reasoning as a fallback.
+
+Three physical iPad trials from Settings to a visible Slack DM completed in
+3.60–3.65 seconds including final screenshot capture. This is a measured workflow,
+not a claim about arbitrary app tasks. See [setup, tools, and measurements](control_server/jev/README.md).
+USB mouse actions still need calibration and an observed pointer; native UI actions
+bypass the relative mouse entirely.
+
 ![iPad Computer Use demo](docs/demo.gif)
 
 ## Three components

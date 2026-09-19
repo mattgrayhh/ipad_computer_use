@@ -1,6 +1,10 @@
 # Control server
 
 Routes ordered actions and screenshot requests to one permitted iPad session.
+
+This fork also provides [Jev workflows and native UI tools](jev/README.md):
+`jev_run` executes bounded workflows locally, `jev_decide` advises individual
+OCR actions, and optional WebDriverAgent exposes native iPad controls.
 The iPad maintains an outbound WebSocket; requests complete only after its reply.
 The server requires no USB access or Apple SDK. Node.js 20+ is required.
 
@@ -82,6 +86,10 @@ is intended for a private local transport such as OpenAI Secure MCP Tunnel. Keep
 it loopback-only for public networks; only bind it to a Tailscale address when
 the tailnet ACLs are the authentication boundary. The adapter exposes:
 
+- `jev_run`: executes a bounded Slack navigation workflow or caller-supplied keyboard plan.
+- `jev_cancel`: stops a local workflow before its next action.
+- `get_ui` / `ui_action`: inspect and use native controls through optional WebDriverAgent.
+- `jev_decide`: returns a screenshot/OCR-based Jev action proposal without input.
 - `status`: reads connection/session/calibration state.
 - `get_screen`: returns a fresh JPEG screenshot from the active broadcast.
 - `issue_actions`: forwards high-level keyboard and pointer actions to

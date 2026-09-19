@@ -16,6 +16,12 @@ under that license. Third-party code retains its own licenses and notices.
 
 ## Installed dependencies
 
+The Jev integration was informed by the OCR and batched-decision architecture in
+[awlevin/typesafe-computer-use](https://github.com/awlevin/typesafe-computer-use)
+(MIT). Its Python implementation is not vendored. This fork implements the iPad
+MCP adaptation in JavaScript and Swift using Apple's Vision framework and the
+TypeSafe HTTP API.
+
 - `ws` 8.21.3: MIT license, installed by npm from the lockfile; its LICENSE is
   included by the upstream package.
 - Arduino-Pico 6.1.0: installed by the firmware setup script. Its core LICENSE
@@ -24,6 +30,9 @@ under that license. Third-party code retains its own licenses and notices.
   distribution's notices and source/relinking requirements before publishing
   prebuilt firmware, not just this project's original-code license.
 - Apple SDKs/tooling are installed separately and not redistributed here.
+- Optional Appium WebDriverAgent 16.12.8: BSD-3-Clause, installed from the pinned
+  npm package by `control_server/jev/wda_setup.sh`. Its source, licenses and build
+  products remain in the excluded `.state/wda` directory; none are vendored here.
 
 This list describes the current source dependencies, not a completed audit of
 every library linked into a firmware binary.

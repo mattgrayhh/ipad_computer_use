@@ -68,6 +68,11 @@ with their existing server address prefilled.
 4. Complete pointer calibration if needed. Use any iPad app during the session.
 5. End Session to revoke new commands and request key/button release.
 
+Screen locking stops the broadcast. For unattended sessions across apps, set
+Settings → Display & Brightness → Auto-Lock to Never, then restore your preferred
+timeout when finished. A disconnected session does not delete the saved pointer
+calibration; restart screen sharing after unlocking.
+
 Recalibrate Pointer is also on the main page. Without an active session, it opens
 screen-sharing confirmation first. Saving a different server during a session
 requires ending that session through the explicit End Session and Save button.
@@ -76,6 +81,9 @@ The broadcast extension initiates `WS /device`; the iPad does not expose an
 incoming server. Screenshots use the latest fresh ReplayKit frame, scaled to at
 most 1280 pixels across. Protected content may not be capturable. Input targets
 the foreground app; the transport does not know which field/button receives it.
+ReplayKit's source rotation is inverted when flattening landscape frames so
+screenshots and UIKit pointer coordinates have the same orientation. The frame
+harness checks asymmetric image content in all four rotations, not just size.
 
 Native calibration connects to port 8766 in local ws development, or `/native`
 on the same wss origin in a TLS deployment. Retain the /device path in the saved
