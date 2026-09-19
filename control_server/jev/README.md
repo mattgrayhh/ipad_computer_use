@@ -102,7 +102,7 @@ The response reports `captureMs`, `ocrMs`, `jevMs`, and `totalMs`, plus TypeSafe
 token usage and the resolved model. These cover the decision tool only; Codex
 reasoning, tool transport, input execution and verification add latency. Measure
 the same device tasks with and without Jev before claiming an end-to-end speedup.
-No live Jev/device benchmark is bundled with this change.
+The measurements below are smoke tests, not comparative speed benchmarks.
 
 A live API smoke test on a synthetic two-label screenshot with `jev-1.13.0`
 selected Settings (confidence 0.99) and Privacy (0.98), and returned
@@ -110,6 +110,12 @@ selected Settings (confidence 0.99) and Privacy (0.98), and returned
 Jev latency was 351–550 ms; full OCR took 202–213 ms after warm-up. One unchanged
 image reused cached OCR. These small samples validate wiring, not general task
 accuracy or physical-device speed.
+
+On a connected iPad Air M3, native calibration hit all six verification targets
+with a maximum error of 1.21 UIKit points. A live `jev_decide` call selected
+"Edit Control Server" with confidence 0.97: capture 91 ms, OCR 172 ms, Jev
+409 ms, total 672 ms. This verifies the physical screen-to-decision path;
+agent review and input execution are additional steps.
 
 - One request batches independent action, target and optional text questions.
   Only answers used by the selected action affect its confidence gate.

@@ -76,6 +76,9 @@ The broadcast extension initiates `WS /device`; the iPad does not expose an
 incoming server. Screenshots use the latest fresh ReplayKit frame, scaled to at
 most 1280 pixels across. Protected content may not be capturable. Input targets
 the foreground app; the transport does not know which field/button receives it.
+ReplayKit's source rotation is inverted when flattening landscape frames so
+screenshots and UIKit pointer coordinates have the same orientation. The frame
+harness checks asymmetric image content in all four rotations, not just size.
 
 Native calibration connects to port 8766 in local ws development, or `/native`
 on the same wss origin in a TLS deployment. Retain the /device path in the saved
