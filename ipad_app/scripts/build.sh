@@ -12,4 +12,4 @@ if [[ -n "${DEVELOPMENT_TEAM:-}" ]]; then signing+=("DEVELOPMENT_TEAM=$DEVELOPME
 if [[ -n "${KEY_RELAY_BUNDLE_ID:-}" ]]; then signing+=("KEY_RELAY_BUNDLE_ID=$KEY_RELAY_BUNDLE_ID"); fi
 xcodebuild -project ipad_computer_use.xcodeproj -scheme ipad_computer_use \
   -configuration Debug -destination "${DESTINATION:-generic/platform=iOS}" \
-  -derivedDataPath build "${signing[@]}" "$@" build
+  -derivedDataPath build ${signing[@]+"${signing[@]}"} "$@" build
